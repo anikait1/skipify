@@ -1,0 +1,17 @@
+{
+  "name": "skipify",
+  "module": "index.ts",
+  "type": "module",
+  "scripts": {
+    "start:dev": "bun src/index.ts"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "valibot": "^0.13.1"
+  }
+}
