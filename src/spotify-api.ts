@@ -84,7 +84,7 @@ class SpotifyError extends Error {
   }
 
   toString() {
-    return `SpotifyError(${this.type}) Extra(${this.extra})`
+    return `SpotifyError(${this.type}) Extra(${this.extra}) Cause(${this.cause}) Type(${this.type})`
   }
 }
 
