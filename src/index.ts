@@ -6,7 +6,7 @@ import {
   writeSpotifyCredentialsToFile,
 } from "./spotify-api";
 import { Track, readTracksFromFile } from "./track";
-import { playerEventEmitter } from "./player";
+import { SkipifyPlayer } from "./player";
 
 const CREDENTIALS_FILE = process.argv[2] || "./config/credentials.json";
 const TRACKS_LIST_FILE = process.argv[3] || "./config/tracks-list.json";
@@ -56,30 +56,22 @@ async function refreshCredentialsPoll(credentials: CredentialsData) {
 
 async function currentlyPlayingPoll(
   accessToken: string,
-  tracks: Map<string, Track>
+  player: SkipifyPlayer
 ) {
   try {
     const currentTrack = await currentlyPlaying(accessToken);
     if (currentTrack) {
-      playerEventEmitter.emit(
-        "track-progress",
-        {
-          state: "PLAYING",
-          track: {
-            id: currentTrack.item.uri,
-            name: currentTrack.item.name,
-            progress: currentTrack.progress_ms,
-          },
-        },
-        tracks,
-        accessToken
+      player.updateProgress(
+        currentTrack.item.uri,
+        currentTrack.item.name,
+        currentTrack.progress_ms
       );
     }
   } catch (error) {
     console.error(`Unable to fetch current track from spotify ${error}`);
   }
 
-  setTimeout(currentlyPlayingPoll, 1000, accessToken, tracks);
+  setTimeout(currentlyPlayingPoll, 1000, accessToken, player);
 }
 
 async function setupPolling() {
@@ -87,7 +79,8 @@ async function setupPolling() {
     CREDENTIALS_FILE
   );
   const tracks: Map<string, Track> = await readTracksFromFile(TRACKS_LIST_FILE);
+  const player = new SkipifyPlayer(credentials, tracks);
 
   refreshCredentialsPoll(credentials);
-  currentlyPlayingPoll(credentials.accessToken, tracks);
+  currentlyPlayingPoll(credentials.accessToken, player);
 }
