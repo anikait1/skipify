@@ -170,3 +170,7 @@ dist
 
 # config
 config/credentials.json
+config/tokens.json
+
+# sqlite
+*.db
