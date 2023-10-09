@@ -7,7 +7,7 @@ import {
   BaseSchema,
   nullable,
 } from "valibot";
-import { getSpotifyCredentials } from "./database";
+import { SpotifyCredentials, getSpotifyCredentials, getSpotifyTokens } from "./database";
 
 const URLS = {
   AUTH: {
@@ -41,8 +41,15 @@ const SpotifyAccessTokenSchema = object({
   expires_in: number(),
 });
 
+const SpotifyRefreshTokenSchema = object({
+  access_token: string(),
+  token_type: string(),
+  expires_in: number(),
+});
+
 export type SpotifyAccessTokenData = Output<typeof SpotifyAccessTokenSchema>;
-type CurrentlyPlayingData = Output<typeof CurrentlyPlayingSchema>;
+export type SpotifyRefreshTokenData = Output<typeof SpotifyRefreshTokenSchema>;
+export type CurrentlyPlayingData = Output<typeof CurrentlyPlayingSchema>;
 
 const SpotifyErrorType = {
   NETWORK_ERROR: "NETWORK_ERROR",
@@ -56,6 +63,7 @@ type SpotifyErrorType =
 class SpotifyError extends Error {
   type: SpotifyErrorType;
   extra?: Record<string, unknown>;
+  cause?: any;
 
   constructor(
     type: SpotifyErrorType,
@@ -121,8 +129,7 @@ async function apiRequest<T extends BaseSchema>(
     });
 }
 
-export async function exchangeSpotifyToken(code: string): Promise<SpotifyAccessTokenData> {
-  const credentials = getSpotifyCredentials(process.env.key as string);
+export async function exchangeSpotifyToken(code: string, credentials: SpotifyCredentials): Promise<SpotifyAccessTokenData> {
   const url = new URL(URLS.AUTH.REFRESH_TOKEN);
   const authorizationHeader = btoa(
     `${credentials.client_id}:${credentials.client_secret}`
@@ -141,6 +148,27 @@ export async function exchangeSpotifyToken(code: string): Promise<SpotifyAccessT
   });
 
   return await apiRequest(request, SpotifyAccessTokenSchema)
+}
+
+export async function refreshSpotifyToken(refreshToken: string): Promise<SpotifyRefreshTokenData> {
+  const url = new URL(URLS.AUTH.REFRESH_TOKEN);
+  const credentials = getSpotifyCredentials(process.env.key as string);
+  const authorizationHeader = btoa(
+    `${credentials.client_id}:${credentials.client_secret}`
+  );
+
+  url.searchParams.append("grant_type", "refresh_token");
+  url.searchParams.append("refresh_token", refreshToken);
+
+  const request = new Request(url.toString(), {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${authorizationHeader}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+  });
+
+  return await apiRequest(request, SpotifyRefreshTokenSchema)
 }
 
 export async function currentlyPlaying(

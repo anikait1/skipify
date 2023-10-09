@@ -11,7 +11,7 @@ const GET_TOKENS_BY_EMAIL_QUERY =
 
 const UPDATE_TOKENS = `
   UPDATE spotify_tokens
-  SET access_token = $access_token, refresh_token = $refresh_token
+  SET access_token = $access_token
   WHERE email = $email
 `;
 
@@ -50,6 +50,10 @@ export function getSpotifyTokens(email: string): SpotifyTokens | null {
   return db
     .query(GET_TOKENS_BY_EMAIL_QUERY)
     .get({ $email: email }) as SpotifyTokens;
+}
+
+export function updateSpotifyTokens(email: string, accessToken: string) {
+  return db.query(UPDATE_TOKENS).get({ $email: email, $access_token: accessToken });
 }
 
 export function insertSpotifyTokens(
