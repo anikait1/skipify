@@ -6,8 +6,14 @@ import {
   Output,
   BaseSchema,
   nullable,
+  array,
+  any,
 } from "valibot";
-import { SpotifyCredentials, getSpotifyCredentials, getSpotifyTokens } from "./database";
+import {
+  SpotifyCredentials,
+  getSpotifyCredentials,
+  getSpotifyTokens,
+} from "./database";
 
 const URLS = {
   AUTH: {
@@ -30,6 +36,12 @@ const CurrentlyPlayingSchema = nullable(
       name: string(),
       uri: string(),
       id: string(),
+      duration_ms: number(),
+      album: object({
+        images: array(
+          object({ height: number(), url: string(), width: number() })
+        ),
+      }),
     }),
     currently_playing_type: string(),
   })
@@ -129,7 +141,10 @@ async function apiRequest<T extends BaseSchema>(
     });
 }
 
-export async function exchangeSpotifyToken(code: string, credentials: SpotifyCredentials): Promise<SpotifyAccessTokenData> {
+export async function exchangeSpotifyToken(
+  code: string,
+  credentials: SpotifyCredentials
+): Promise<SpotifyAccessTokenData> {
   const url = new URL(URLS.AUTH.REFRESH_TOKEN);
   const authorizationHeader = btoa(
     `${credentials.client_id}:${credentials.client_secret}`
@@ -137,7 +152,7 @@ export async function exchangeSpotifyToken(code: string, credentials: SpotifyCre
 
   url.searchParams.append("grant_type", "authorization_code");
   url.searchParams.append("code", code);
-  url.searchParams.append("redirect_uri", credentials.redirect_uri)
+  url.searchParams.append("redirect_uri", credentials.redirect_uri);
 
   const request = new Request(url.toString(), {
     method: "POST",
@@ -147,10 +162,12 @@ export async function exchangeSpotifyToken(code: string, credentials: SpotifyCre
     },
   });
 
-  return await apiRequest(request, SpotifyAccessTokenSchema)
+  return await apiRequest(request, SpotifyAccessTokenSchema);
 }
 
-export async function refreshSpotifyToken(refreshToken: string): Promise<SpotifyRefreshTokenData> {
+export async function refreshSpotifyToken(
+  refreshToken: string
+): Promise<SpotifyRefreshTokenData> {
   const url = new URL(URLS.AUTH.REFRESH_TOKEN);
   const credentials = getSpotifyCredentials(process.env.key as string);
   const authorizationHeader = btoa(
@@ -168,7 +185,7 @@ export async function refreshSpotifyToken(refreshToken: string): Promise<Spotify
     },
   });
 
-  return await apiRequest(request, SpotifyRefreshTokenSchema)
+  return await apiRequest(request, SpotifyRefreshTokenSchema);
 }
 
 export async function currentlyPlaying(
@@ -218,12 +235,12 @@ export async function next(accessToken: string): Promise<undefined> {
 export function createAuthorizationUrl(): string {
   const credentials = getSpotifyCredentials(process.env.key as string);
   const spotifyUrl = new URL("https://accounts.spotify.com/authorize");
-  
+
   spotifyUrl.searchParams.append("response_type", "code");
   spotifyUrl.searchParams.append("client_id", credentials.client_id);
   spotifyUrl.searchParams.append("scope", credentials.scopes);
   spotifyUrl.searchParams.append("redirect_uri", credentials.redirect_uri);
   spotifyUrl.searchParams.append("state", "state-123");
 
-  return spotifyUrl.toString()
+  return spotifyUrl.toString();
 }

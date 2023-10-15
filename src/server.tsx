@@ -17,12 +17,13 @@ import {
   refreshSpotifyToken,
 } from "./spotify-api";
 import { FC } from "hono/jsx";
+import DummyLayout from "./components";
+import { CurrentlyPlaying } from "./components/currently-playing";
 
 const app = new Hono();
 app.use("public/*", serveStatic({ root: "./src" }));
 app.use("*", logger());
 
-let timer: ReturnType<typeof setTimeout> | null = null;
 
 const Layout: FC = (props) => {
   return (
@@ -82,19 +83,15 @@ const HomePage = (props: { currenTrack: CurrentlyPlayingData }) => {
   );
 };
 
-const CurrentlyPlaying = (props: { currentTrack: CurrentlyPlayingData }) => {
-  if (!props.currentTrack) {
-    return <div id="currently-playing">Spotify ain't doing anything</div>;
-  }
+app.get("/dump", async (c) => {
+  const tokens = getSpotifyTokens(process.env.email as string);
 
-  return (
-    <div id="currently-playing">
-      <li>Name: {props.currentTrack.item.name}</li>
-    </div>
-  );
-};
+  const currentTrack = await currentlyPlaying(tokens!.access_token)
+  console.log(currentTrack)
+  return c.html(<DummyLayout currentTrack={currentTrack}/>)
+})
 
-app.post("/currently-playing", async (c) => {
+app.get("/currently-playing", async (c) => {
   const start = performance.now();
   const tokens = getSpotifyTokens(process.env.email as string);
   console.log(performance.now() - start);
@@ -118,9 +115,9 @@ app.get("/", async (c) => {
 
   let currentTrack: CurrentlyPlayingData | null = null;
   try {
-    // const refreshedTokens = await refreshSpotifyToken(tokens.refresh_token)
-    // updateSpotifyTokens(process.env.email as string, refreshedTokens.access_token)
-    // tokens.access_token = refreshedTokens.access_token
+    const refreshedTokens = await refreshSpotifyToken(tokens.refresh_token)
+    updateSpotifyTokens(process.env.email as string, refreshedTokens.access_token)
+    tokens.access_token = refreshedTokens.access_token
 
     currentTrack = await currentlyPlaying(tokens.access_token);
     console.log(currentTrack);
