@@ -27,7 +27,7 @@ export type SpotifyCredentials = {
   scopes: string;
 };
 
-type SpotifyTokens = {
+export type SpotifyTokens = {
   access_token: string;
   refresh_token: string;
 };
@@ -53,7 +53,9 @@ export function getSpotifyTokens(email: string): SpotifyTokens | null {
 }
 
 export function updateSpotifyTokens(email: string, accessToken: string) {
-  return db.query(UPDATE_TOKENS).get({ $email: email, $access_token: accessToken });
+  return db
+    .query(UPDATE_TOKENS)
+    .get({ $email: email, $access_token: accessToken });
 }
 
 export function insertSpotifyTokens(

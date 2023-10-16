@@ -5,7 +5,6 @@ export function CurrentlyPlaying(props: { currentTrack: CurrentlyPlayingData, st
     return <h1> TODO </h1>;
   }
 
-  props.startPoll = true;
   const progressPercentage = Math.floor(
     (props.currentTrack.progress_ms / props.currentTrack.item.duration_ms) * 100
   );

@@ -1,8 +1,9 @@
-import { Hono } from "hono";
+import { Hono, MiddlewareHandler } from "hono";
 import { serveStatic } from "hono/bun";
 import { html } from "hono/html";
 import { logger } from "hono/logger";
 import {
+  SpotifyTokens,
   getSpotifyCredentials,
   getSpotifyTokens,
   insertSpotifyTokens,
@@ -16,116 +17,60 @@ import {
   exchangeSpotifyToken,
   refreshSpotifyToken,
 } from "./spotify-api";
-import { FC } from "hono/jsx";
-import DummyLayout from "./components";
+import { Layout } from "./components";
 import { CurrentlyPlaying } from "./components/currently-playing";
 
-const app = new Hono();
-app.use("public/*", serveStatic({ root: "./src" }));
-app.use("*", logger());
-
-
-const Layout: FC = (props) => {
-  return (
-    <html lang="en">
-      <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Skipify</title>
-        <link
-          rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css"
-        />
-        <script src="https://unpkg.com/htmx.org@1.9.6"></script>
-      </head>
-      <body>{props.children}</body>
-    </html>
-  );
-};
-
-const Nav: FC = () => {
-  return (
-    <nav>
-      <ul>
-        <li style="text:center">
-          <strong>Skipify</strong>
-        </li>
-      </ul>
-    </nav>
-  );
-};
-
-const HomePage = (props: { currenTrack: CurrentlyPlayingData }) => {
-  return (
-    <Layout>
-      <main class="container">
-        <Nav />
-        <button
-          role="button"
-          class="secondary"
-          hx-post="/start-poll"
-          hx-swap="outerHTML"
-        >
-          Start Poll
-        </button>
-        <button
-          role="button"
-          hx-trigger="click"
-          hx-post="/currently-playing"
-          hx-target="#currently-playing"
-          hx-swap="outerHTML"
-        >
-          Fetch Current Playing
-        </button>
-        <CurrentlyPlaying currentTrack={props.currenTrack} />
-      </main>
-    </Layout>
-  );
-};
-
-app.get("/dump", async (c) => {
-  const tokens = getSpotifyTokens(process.env.email as string);
-
-  const currentTrack = await currentlyPlaying(tokens!.access_token)
-  console.log(currentTrack)
-  return c.html(<DummyLayout currentTrack={currentTrack}/>)
-})
-
-app.get("/currently-playing", async (c) => {
-  const start = performance.now();
-  const tokens = getSpotifyTokens(process.env.email as string);
-  console.log(performance.now() - start);
-
-  let currentTrack: CurrentlyPlayingData | null = null;
-  try {
-    currentTrack = await currentlyPlaying(tokens!.access_token);
-  } catch (error) {
-    console.error("Unable to fetch current track");
-  }
-
-  return c.html(<CurrentlyPlaying currentTrack={currentTrack} />);
-});
-
-app.get("/", async (c) => {
+// TODO - move middleware to separate file
+const spotifyTokensMiddleware: MiddlewareHandler<{
+  Variables: {
+    spotifyTokens: SpotifyTokens;
+  };
+}> = async (c, next) => {
   const tokens = getSpotifyTokens(process.env.email as string);
   if (!tokens) {
     const spotifyAuthorizationUrl = createAuthorizationUrl();
     return c.redirect(spotifyAuthorizationUrl);
   }
 
+  c.set("spotifyTokens", tokens);
+  return await next();
+};
+
+const app = new Hono();
+app.use("public/*", serveStatic({ root: "./src" }));
+app.use("*", logger());
+
+app.get("/currently-playing", spotifyTokensMiddleware, async (c) => {
+  const tokens = c.var.spotifyTokens
+
   let currentTrack: CurrentlyPlayingData | null = null;
   try {
-    const refreshedTokens = await refreshSpotifyToken(tokens.refresh_token)
-    updateSpotifyTokens(process.env.email as string, refreshedTokens.access_token)
-    tokens.access_token = refreshedTokens.access_token
-
     currentTrack = await currentlyPlaying(tokens.access_token);
-    console.log(currentTrack);
   } catch (error) {
-    console.error("Unable to get current track");
+    console.error("Unable to fetch current track");
   }
 
-  return c.html(<HomePage currenTrack={currentTrack} />);
+  return c.html(<CurrentlyPlaying currentTrack={currentTrack} startPoll={false} />);
+});
+
+app.get("/", spotifyTokensMiddleware, async (c) => {
+  const tokens = c.var.spotifyTokens;
+  let currentTrack: CurrentlyPlayingData | null = null;
+
+  try {
+    const refreshedTokens = await refreshSpotifyToken(tokens.refresh_token);
+    updateSpotifyTokens(
+      process.env.email as string,
+      refreshedTokens.access_token
+    );
+    tokens.access_token = refreshedTokens.access_token;
+
+    currentTrack = await currentlyPlaying(tokens.access_token);
+  } catch (error) {
+    console.error("Unable to get current track", error);
+  }
+
+  return c.html(<Layout currentTrack={currentTrack} startPoll={false}/>);
 });
 
 app.get("/spotify-redirect", async (c) => {

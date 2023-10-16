@@ -1,7 +1,13 @@
 import { FC } from "hono/jsx";
 import { CurrentlyPlaying } from "./currently-playing";
+import { CurrentlyPlayingData } from "../spotify-api";
 
-const DummyLayout: FC = (props) => {
+type LayoutProps = {
+  currentTrack: CurrentlyPlayingData
+  startPoll: boolean
+}
+
+export const Layout: FC<LayoutProps> = (props) => {
   return (
     <html lang="en">
       <head>
@@ -23,7 +29,10 @@ const DummyLayout: FC = (props) => {
       <body>
         <main class="container mt-5">
           <div class="row">
-            <CurrentlyPlaying currentTrack={props.currentTrack} startPoll={false} />
+            <CurrentlyPlaying
+              currentTrack={props.currentTrack}
+              startPoll={false}
+            />
             <section class="col-6"></section>
             <section class="col-3"></section>
           </div>
@@ -32,31 +41,3 @@ const DummyLayout: FC = (props) => {
     </html>
   );
 };
-
-// const HomePage: FC = (props) => {
-//   return (
-//     <Layout>
-//       <div class="row">
-//         <div className="class"></div>
-//         <div class="col-md-6 offset-md-3">
-//           <div class="card">
-//             <div class="card-body">
-//               <h5 class="card-title">
-//                 <strong>Skipify</strong>
-//               </h5>
-//               <p class="card-text">
-//                 Skipify is a web app that allows you to skip to the next song in
-//                 your Spotify playlist.
-//               </p>
-//               <a href="/auth" class="btn btn-primary">
-//                 Get Started
-//               </a>
-//             </div>
-//           </div>
-//         </div>
-//       </div>
-//     </Layout>
-//   );
-// }
-
-export default DummyLayout;
