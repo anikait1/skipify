@@ -1,11 +1,14 @@
 import { FC } from "hono/jsx";
 import { CurrentlyPlaying } from "./currently-playing";
 import { CurrentlyPlayingData } from "../spotify-api";
+import { AutomationList } from "./automation-list";
+import { Automation } from "../database";
 
 type LayoutProps = {
-  currentTrack: CurrentlyPlayingData
-  startPoll: boolean
-}
+  currentTrack: CurrentlyPlayingData;
+  startPoll: boolean;
+  automations: Automation[] | null
+};
 
 export const Layout: FC<LayoutProps> = (props) => {
   return (
@@ -33,7 +36,7 @@ export const Layout: FC<LayoutProps> = (props) => {
               currentTrack={props.currentTrack}
               startPoll={false}
             />
-            <section class="col-6"></section>
+            <AutomationList automations={props.automations}/>
             <section class="col-3"></section>
           </div>
         </main>

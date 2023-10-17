@@ -3,22 +3,6 @@ import { Database } from "bun:sqlite";
 const databaseName = process.env.SKIPIFY_DB;
 
 export const db = new Database(databaseName);
-const GET_CREDENTIALS_QUERY =
-  "SELECT client_id, client_secret, redirect_uri, scopes FROM spotify_credentials WHERE key = $key";
-
-const GET_TOKENS_BY_EMAIL_QUERY =
-  "SELECT access_token, refresh_token FROM spotify_tokens WHERE email = $email";
-
-const UPDATE_TOKENS = `
-  UPDATE spotify_tokens
-  SET access_token = $access_token
-  WHERE email = $email
-`;
-
-const INSERT_TOKENS = `
-  INSERT INTO spotify_tokens (email, access_token, refresh_token)
-  VALUES ($email, $access_token, $refresh_token)
-`;
 
 export type SpotifyCredentials = {
   client_id: string;
@@ -30,7 +14,36 @@ export type SpotifyCredentials = {
 export type SpotifyTokens = {
   access_token: string;
   refresh_token: string;
+  refreshed_at: number;
 };
+
+export type Automation = {
+  spotify_id: string;
+  name: string;
+  action:
+    | { type: "RANGE:START"; range: { start: number } }
+    | { type: "RANGE:BETWEEN"; range: { start: number; stop: number } };
+};
+
+const GET_CREDENTIALS_QUERY =
+  "SELECT client_id, client_secret, redirect_uri, scopes FROM spotify_credentials WHERE key = $key";
+
+const GET_TOKENS_BY_EMAIL_QUERY =
+  "SELECT access_token, refresh_token, refreshed_at FROM spotify_tokens WHERE email = $email";
+
+const UPDATE_TOKENS = `
+  UPDATE spotify_tokens
+  SET access_token = $access_token, refreshed_at = $refreshed_at
+  WHERE email = $email
+`;
+
+const INSERT_TOKENS = `
+  INSERT INTO spotify_tokens (email, access_token, refresh_token, refreshed_at)
+  VALUES ($email, $access_token, $refresh_token, $refreshed_at)
+`;
+
+const GET_AUTOMATION_BY_SPOTIFY_TRACK_ID = `SELECT * FROM automations WHERE spotify_id = $spotify_id`;
+const GET_ALL_AUTOMATIONS = `SELECT * FROM automations`;
 
 let credentials: undefined | SpotifyCredentials;
 export function getSpotifyCredentials(
@@ -55,7 +68,11 @@ export function getSpotifyTokens(email: string): SpotifyTokens | null {
 export function updateSpotifyTokens(email: string, accessToken: string) {
   return db
     .query(UPDATE_TOKENS)
-    .get({ $email: email, $access_token: accessToken });
+    .get({
+      $email: email,
+      $access_token: accessToken,
+      $refreshed_at: Date.now(),
+    });
 }
 
 export function insertSpotifyTokens(
@@ -67,5 +84,18 @@ export function insertSpotifyTokens(
     $email: email,
     $access_token: accessToken,
     $refresh_token: refreshToken,
+    $refreshed_at: Date.now(),
   });
+}
+
+// TODO(fix) parsing of automation, convert action (string) to json
+export function getAutomationForTrack(spotify_id: string): Automation | null {
+  return db
+    .query(GET_AUTOMATION_BY_SPOTIFY_TRACK_ID)
+    .get({ $spotify_id: spotify_id }) as Automation;
+}
+
+// TODO(fix) parsing of automation, convert action (string) to json
+export function getAllAutomations(): Automation[] | null {
+  return db.query(GET_ALL_AUTOMATIONS).all() as Automation[];
 }
