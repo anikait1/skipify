@@ -3,6 +3,7 @@ import { CurrentlyPlaying } from "./currently-playing";
 import { CurrentlyPlayingData } from "../spotify-api";
 import { AutomationList } from "./automation-list";
 import { Automation } from "../database";
+import { AutomationInput } from "./automation-input";
 
 type LayoutProps = {
   currentTrack: CurrentlyPlayingData;
@@ -37,7 +38,7 @@ export const Layout: FC<LayoutProps> = (props) => {
               startPoll={false}
             />
             <AutomationList automations={props.automations}/>
-            <section class="col-3"></section>
+            <AutomationInput/>
           </div>
         </main>
       </body>

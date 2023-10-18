@@ -103,10 +103,6 @@ app.get("/spotify-redirect", async (c) => {
   );
 });
 
-app.post("/start-poll", (c) => {
-  return c.html(html`<h1>Server Sent html</h1>`);
-});
-
 export default {
   port: 8000,
   fetch: app.fetch,

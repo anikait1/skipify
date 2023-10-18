@@ -2,7 +2,9 @@ import { CurrentlyPlayingData } from "../spotify-api";
 
 export function CurrentlyPlaying(props: { currentTrack: CurrentlyPlayingData, startPoll: boolean }) {
   if (!props.currentTrack) {
-    return <h1> TODO </h1>;
+    return (<section class="col-3" id="currently-playing">
+      <h5>Playing Nothing (TODO) - need to use the standard component here</h5>
+    </section>);
   }
 
   const progressPercentage = Math.floor(
