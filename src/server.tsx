@@ -7,16 +7,16 @@ import { SpotifyAccessTokenData, exchangeSpotifyToken } from "./spotify-api";
 import { Layout } from "./components";
 import { CurrentlyPlaying } from "./components/currently-playing";
 import { spotifyTokensMiddleware } from "./middleware/spotify-tokens-middleware";
-import { Skipify } from "./skipify";
+import { player, skipifySetupPoll } from "./skipify";
 
 const app = new Hono();
-Skipify.init();
+skipifySetupPoll()
 
 app.use("public/*", serveStatic({ root: "./src" }));
 app.use("*", logger());
 
 app.get("/currently-playing", (c) => {
-  const currentTrack = Skipify.player.currentlyPlaying;
+  const currentTrack = player.currentlyPlaying;
   return c.html(
     <CurrentlyPlaying
       currentTrack={currentTrack}
@@ -26,10 +26,9 @@ app.get("/currently-playing", (c) => {
 });
 
 app.get("/", spotifyTokensMiddleware, async (c) => {
-  const automations = Skipify.player.automations;
-  const currentTrack = Skipify.player.currentlyPlaying;
+  const automations = player.automations;
+  const currentTrack = player.currentlyPlaying;
 
-  console.log(currentTrack!==null)
   return c.html(
     <Layout
       currentTrack={currentTrack}

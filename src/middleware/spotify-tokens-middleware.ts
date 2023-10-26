@@ -1,6 +1,6 @@
 import { MiddlewareHandler } from "hono";
 import { createAuthorizationUrl } from "../spotify-api";
-import { Skipify } from "../skipify";
+import { tokens } from "../skipify";
 import { AuthorizedTokens } from "../tokens";
 
 export const spotifyTokensMiddleware: MiddlewareHandler<{
@@ -8,11 +8,11 @@ export const spotifyTokensMiddleware: MiddlewareHandler<{
     spotifyTokens: AuthorizedTokens;
   };
 }> = async (c, next) => {
-  if (!Skipify.tokens.authorized) {
+  if (!tokens.authorized) {
     const spotifyAuthorizationUrl = createAuthorizationUrl();
     return c.redirect(spotifyAuthorizationUrl);
   }
 
-  c.set("spotifyTokens", Skipify.tokens);
+  c.set("spotifyTokens", tokens);
   return await next();
 };
