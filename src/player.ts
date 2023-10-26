@@ -1,70 +1,107 @@
-import EventEmitter from "events";
-import { CredentialsData, next, seek } from "./spotify-api";
-import { Track } from "./track";
+import {
+  CurrentlyPlayingData,
+  currentlyPlaying,
+  next,
+  seek,
+} from "./spotify-api";
+import {
+  Automation,
+} from "./database";
+import { AuthorizedTokens } from "./tokens";
 
-export class SkipifyPlayer extends EventEmitter {
-  readonly credentials: Readonly<CredentialsData>;
-  readonly tracks: Readonly<Map<string, Track>>;
-  currenTrack?: Omit<Track, "actions"> & { progress: number };
+const PLAYER_POLL_INTERVAL = 1000 // 1 second
 
-  constructor(credenitals: CredentialsData, tracks: Map<string, Track>) {
-    super();
-    this.credentials = credenitals;
-    this.tracks = tracks;
+export type InactivePlayer = { state: "STOPPED"; currentlyPlaying: null };
+export type ActivePlayer = {
+  state: "PLAYING" | "PAUSED";
+  currentlyPlaying: Exclude<CurrentlyPlayingData, null>;
+};
+export type Player = (ActivePlayer | InactivePlayer) & {
+  automations: Automation[];
+};
+
+export function loadPlayer(
+  automations: Automation[]
+): Player {
+  return  {
+    state: "STOPPED",
+    currentlyPlaying: null,
+    automations: automations,
+  }
+}
+
+export async function playerPoll(tokens: AuthorizedTokens, player: Player): Promise<void> {
+  try {
+    const track = await currentlyPlaying(tokens.accessToken);
+    if (!track) {
+      setTimeout(playerPoll, PLAYER_POLL_INTERVAL, tokens, player);
+      return
+    }
+
+    player.state = "PLAYING";
+    player.currentlyPlaying = track;
+    
+    const automation = findAutomation(player.automations, track.item.uri);
+    if (automation) {
+     applyAutomation(tokens, automation, track);
+    }
+
+  } catch (error) {
+    // TODO - brainstorm what needs to be done to the player state
+    console.error("Unable to fetch currently playing track", error);
   }
 
-  async updateProgress(id: string, name: string, progress: number) {
-    if (!this.currenTrack) {
-      this.currenTrack = {
-        id,
-        name,
-        progress,
-      };
+  setTimeout(playerPoll, PLAYER_POLL_INTERVAL, tokens, player);
+}
+
+function findAutomation(
+  automations: Automation[],
+  spotifyTrackID: string
+): Automation | null {
+  for (const automation of automations) {
+    if (automation.spotify_id === spotifyTrackID) {
+      return automation;
     }
+  }
 
-    // first call to this function when currentTrack has not been
-    // initialized will lead to double assignment
-    this.currenTrack.id = id;
-    this.currenTrack.name = name;
-    this.currenTrack.progress = progress;
+  return null;
+}
 
-    const track = this.tracks.get(id);
-    if (!track) {
-      return;
-    }
+async function applyAutomation(
+  tokens: AuthorizedTokens,
+  automation: Automation,
+  currentlyPlaying: Exclude<CurrentlyPlayingData, null>
+): Promise<void> {
+  const progress = currentlyPlaying.progress_ms;
 
-    const actions = track.actions;
-    for (const action of actions) {
-      switch (action.type) {
-        case "RANGE:START":
-          if (progress < action.range.start) {
-            await seek(action.range.start, this.credentials.accessToken).catch(
-              (error) => {
-                console.error(
-                  `Unable to perform seek operation on ${track} due to ${error}`
-                );
-              }
+  switch (automation.action.type) {
+    case "RANGE:START":
+      if (progress < automation.action.range.start) {
+        await seek(automation.action.range.start, tokens.accessToken).catch(
+          (error) => {
+            console.error(
+              `Unable to perform seek operation on ${currentlyPlaying} due to ${error}`
             );
           }
-          break;
-        case "RANGE:BETWEEN":
-          if (progress < action.range.start) {
-            await seek(action.range.start, this.credentials.accessToken).catch(
-              (error) => {
-                console.error(
-                  `Unable to perform seek operation on ${track} due to ${error}`
-                );
-              }
-            );
-          }
-
-          if (progress > action.range.stop) {
-            await next(this.credentials.accessToken).catch((error) => {
-              console.error(`Unable to perform next operation due to ${error}`);
-            });
-          }
-          break;
+        );
       }
-    }
+      break;
+    case "RANGE:BETWEEN":
+      if (progress < automation.action.range.start) {
+        await seek(automation.action.range.start,tokens.accessToken).catch(
+          (error) => {
+            console.error(
+              `Unable to perform seek operation on ${currentlyPlaying} due to ${error}`
+            );
+          }
+        );
+      }
+
+      if (progress > automation.action.range.stop) {
+        await next(tokens.accessToken).catch((error) => {
+          console.error(`Unable to perform next operation due to ${error}`);
+        });
+      }
+      break;
   }
 }

@@ -7,12 +7,10 @@ import {
   BaseSchema,
   nullable,
   array,
-  any,
 } from "valibot";
 import {
   SpotifyCredentials,
   getSpotifyCredentials,
-  getSpotifyTokens,
 } from "./database";
 
 const URLS = {
@@ -72,7 +70,7 @@ const SpotifyErrorType = {
 type SpotifyErrorType =
   (typeof SpotifyErrorType)[keyof typeof SpotifyErrorType];
 
-class SpotifyError extends Error {
+export class SpotifyError extends Error {
   type: SpotifyErrorType;
   extra?: Record<string, unknown>;
   cause?: any;
@@ -83,7 +81,7 @@ class SpotifyError extends Error {
     cause: any,
     extra?: Record<string, unknown>
   ) {
-    super(message);
+    super(message)
     this.cause = cause;
     this.type = type;
     this.extra = extra;

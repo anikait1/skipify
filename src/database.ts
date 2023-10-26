@@ -17,6 +17,8 @@ export type SpotifyTokens = {
   refreshed_at: number;
 };
 
+type AutomationDB = Omit<Automation, "action"> & { action: string };
+
 export type Automation = {
   spotify_id: string;
   name: string;
@@ -65,14 +67,16 @@ export function getSpotifyTokens(email: string): SpotifyTokens | null {
     .get({ $email: email }) as SpotifyTokens;
 }
 
-export function updateSpotifyTokens(email: string, accessToken: string) {
-  return db
-    .query(UPDATE_TOKENS)
-    .get({
-      $email: email,
-      $access_token: accessToken,
-      $refreshed_at: Date.now(),
-    });
+export function updateSpotifyTokens(
+  email: string,
+  accessToken: string,
+  refreshedAt: number
+) {
+  return db.query(UPDATE_TOKENS).get({
+    $email: email,
+    $access_token: accessToken,
+    $refreshed_at: refreshedAt,
+  });
 }
 
 export function insertSpotifyTokens(
@@ -96,6 +100,10 @@ export function getAutomationForTrack(spotify_id: string): Automation | null {
 }
 
 // TODO(fix) parsing of automation, convert action (string) to json
-export function getAllAutomations(): Automation[] | null {
-  return db.query(GET_ALL_AUTOMATIONS).all() as Automation[];
+export function getAllAutomations(): Automation[] {
+  const automations = db.query(GET_ALL_AUTOMATIONS).all() as AutomationDB[];
+  for (const automation of automations) {
+    automation.action = JSON.parse(automation.action);
+  }
+  return automations as unknown as Automation[];
 }

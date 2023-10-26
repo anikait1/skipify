@@ -1,10 +1,18 @@
 import { CurrentlyPlayingData } from "../spotify-api";
 
-export function CurrentlyPlaying(props: { currentTrack: CurrentlyPlayingData, startPoll: boolean }) {
+export function CurrentlyPlaying(props: {
+  currentTrack: CurrentlyPlayingData;
+  startPoll: boolean;
+}) {
+  // populate currentTrack such that it can be used to show dummy text
   if (!props.currentTrack) {
-    return (<section class="col-3" id="currently-playing">
-      <h5>Playing Nothing (TODO) - need to use the standard component here</h5>
-    </section>);
+    return (
+      <section class="col-3" id="currently-playing">
+        <h5>
+          Playing Nothing (TODO) - need to use the standard component here
+        </h5>
+      </section>
+    );
   }
 
   const progressPercentage = Math.floor(
@@ -31,8 +39,8 @@ export function CurrentlyPlaying(props: { currentTrack: CurrentlyPlayingData, st
           class="progress-bar bg-primary overflow-visible text-dark"
           style={"width: " + String(progressPercentage)}
         >
-          {props.currentTrack.progress_ms} / {props.currentTrack.item.duration_ms}{" "}
-          (ms)
+          {props.currentTrack.progress_ms} /{" "}
+          {props.currentTrack.item.duration_ms} (ms)
         </div>
       </div>
       <div class="d-grid gap-2 mt-3">
@@ -44,7 +52,7 @@ export function CurrentlyPlaying(props: { currentTrack: CurrentlyPlayingData, st
           class="btn btn-primary"
           type="button"
           hx-get="/currently-playing"
-          hx-trigger={props.startPoll && "load delay:1s"}
+          {...(props.startPoll && { "hx-trigger": "load delay:1s" })}
           hx-swap="outerHTML"
           hx-target="#currently-playing"
         >

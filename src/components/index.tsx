@@ -35,7 +35,7 @@ export const Layout: FC<LayoutProps> = (props) => {
           <div class="row">
             <CurrentlyPlaying
               currentTrack={props.currentTrack}
-              startPoll={false}
+              startPoll={props.startPoll}
             />
             <AutomationList automations={props.automations}/>
             <AutomationInput/>

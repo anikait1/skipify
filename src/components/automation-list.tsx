@@ -22,7 +22,7 @@ export function AutomationList(props: { automations: Automation[] | null }) {
             <tr>
               <th scope="row">{automation.spotify_id}</th>
               <td>{automation.name}</td>
-              <td>{JSON.stringify(JSON.parse(automation.action), null, 2)}</td>
+              <td>{JSON.stringify(automation.action, null, 2)}</td>
             </tr>
           ))}
         </tbody>

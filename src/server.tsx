@@ -2,67 +2,38 @@ import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { html } from "hono/html";
 import { logger } from "hono/logger";
-import {
-  getAllAutomations,
-  getSpotifyCredentials,
-  insertSpotifyTokens,
-  updateSpotifyTokens,
-} from "./database";
-import {
-  CurrentlyPlayingData,
-  SpotifyAccessTokenData,
-  currentlyPlaying,
-  exchangeSpotifyToken,
-  refreshSpotifyToken,
-} from "./spotify-api";
+import { getSpotifyCredentials, insertSpotifyTokens } from "./database";
+import { SpotifyAccessTokenData, exchangeSpotifyToken } from "./spotify-api";
 import { Layout } from "./components";
 import { CurrentlyPlaying } from "./components/currently-playing";
 import { spotifyTokensMiddleware } from "./middleware/spotify-tokens-middleware";
+import { Skipify } from "./skipify";
 
 const app = new Hono();
+Skipify.init();
+
 app.use("public/*", serveStatic({ root: "./src" }));
 app.use("*", logger());
 
-app.get("/currently-playing", spotifyTokensMiddleware, async (c) => {
-  const tokens = c.var.spotifyTokens;
-
-  let currentTrack: CurrentlyPlayingData | null = null;
-  try {
-    currentTrack = await currentlyPlaying(tokens.access_token);
-  } catch (error) {
-    console.error("Unable to fetch current track");
-  }
-
+app.get("/currently-playing", (c) => {
+  const currentTrack = Skipify.player.currentlyPlaying;
   return c.html(
-    <CurrentlyPlaying currentTrack={currentTrack} startPoll={false} />
+    <CurrentlyPlaying
+      currentTrack={currentTrack}
+      startPoll={currentTrack !== null}
+    />
   );
 });
 
 app.get("/", spotifyTokensMiddleware, async (c) => {
-  const tokens = c.var.spotifyTokens;
-  const automations = getAllAutomations();
-  let currentTrack: CurrentlyPlayingData | null = null;
+  const automations = Skipify.player.automations;
+  const currentTrack = Skipify.player.currentlyPlaying;
 
-  try {
-    // tokens will only be refreshed if they are stale for more than 40 minutes
-    if (Date.now() - tokens.refreshed_at > 40 * 60 * 1000) {
-      const refreshedTokens = await refreshSpotifyToken(tokens.refresh_token);
-      updateSpotifyTokens(
-        process.env.email as string,
-        refreshedTokens.access_token
-      );
-      tokens.access_token = refreshedTokens.access_token;
-    }
-
-    currentTrack = await currentlyPlaying(tokens.access_token);
-  } catch (error) {
-    console.error("Unable to get current track", error);
-  }
-
+  console.log(currentTrack!==null)
   return c.html(
     <Layout
       currentTrack={currentTrack}
-      startPoll={false}
+      startPoll={currentTrack !== null}
       automations={automations}
     />
   );
