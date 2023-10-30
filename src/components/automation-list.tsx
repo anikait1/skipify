@@ -1,14 +1,19 @@
 import { Automation } from "../database";
+import { player } from "../skipify";
 
-export function AutomationList(props: { automations: Automation[] | null }) {
-  if (!props.automations) {
+export function AutomationList() {
+  const automations: Automation[] = player.automations;
+  if (!automations) {
     return <h1>No automations</h1>;
   }
 
-  // TODO(fix) the JSON.parse and stringify hack
-  // the actual fix is in database file
   return (
-    <section class="col-6">
+    <section
+      class="col-6"
+      hx-get="/automations"
+      hx-trigger="newAutomation from:body"
+      hx-swap="outerHTML"
+    >
       <table class="table table-stripped table-bordered">
         <thead>
           <tr>
@@ -18,7 +23,7 @@ export function AutomationList(props: { automations: Automation[] | null }) {
           </tr>
         </thead>
         <tbody>
-          {props.automations.map((automation) => (
+          {automations.map((automation) => (
             <tr>
               <th scope="row">{automation.spotify_id}</th>
               <td>{automation.name}</td>

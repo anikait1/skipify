@@ -5,24 +5,80 @@ import { logger } from "hono/logger";
 import { getSpotifyCredentials, insertSpotifyTokens } from "./database";
 import { SpotifyAccessTokenData, exchangeSpotifyToken } from "./spotify-api";
 import { Layout } from "./components";
-import { CurrentlyPlaying } from "./components/currently-playing";
+import {
+  CurrentTrackDetails,
+  CurrentlyPlaying,
+} from "./components/currently-playing";
 import { spotifyTokensMiddleware } from "./middleware/spotify-tokens-middleware";
-import { player, skipifySetupPoll } from "./skipify";
+import { player, skipifySetupPoll, tokens } from "./skipify";
+import { addAutomation, playerPoll, stopPlayerPoll } from "./player";
+import { AutomationInput } from "./components/automation-input";
+import { AutomationList } from "./components/automation-list";
 
 const app = new Hono();
-skipifySetupPoll()
+skipifySetupPoll();
 
 app.use("public/*", serveStatic({ root: "./src" }));
 app.use("*", logger());
 
 app.get("/currently-playing", (c) => {
   const currentTrack = player.currentlyPlaying;
+  return c.html(<CurrentTrackDetails currentTrack={currentTrack} />);
+});
+
+app.put("/toggle-player", async (c) => {
+  if (!tokens.authorized) {
+    throw new Error("Setup spotify tokens middleware");
+  }
+
+  if (player.timer) {
+    stopPlayerPoll(player);
+  } else {
+    await playerPoll(tokens, player);
+  }
+
+  console.log(player.timer);
+
   return c.html(
     <CurrentlyPlaying
-      currentTrack={currentTrack}
-      startPoll={currentTrack !== null}
+      currentTrack={player.currentlyPlaying}
+      polling={player.timer !== undefined}
     />
   );
+});
+
+app.post("/automations", async (c) => {
+  // TODO add valibot
+  const formData = await c.req.formData();
+  const automation = {
+    spotify_id: formData.get("spotify-track-id"),
+    name: formData.get("automation-name"),
+    action:
+      formData.get("automation-type") == "RANGE:START"
+        ? JSON.stringify({
+            type: "RANGE:START",
+            range: { start: formData.get("range-start") },
+          })
+        : JSON.stringify({
+            type: "RANGE:BETWEEN",
+            range: {
+              start: formData.get("range-start"),
+              stop: formData.get("range-stop"),
+            },
+          }),
+  };
+  addAutomation(player, automation as any);
+
+  c.header("HX-Trigger", "newAutomation");
+  return c.html(<AutomationInput />);
+});
+
+app.get("/automations", (c) => {
+  return c.html(<AutomationList />);
+});
+
+app.patch("/automation-input", async (c) => {
+  return c.html(<AutomationInput populateFields={true} />);
 });
 
 app.get("/", spotifyTokensMiddleware, async (c) => {
@@ -32,10 +88,15 @@ app.get("/", spotifyTokensMiddleware, async (c) => {
   return c.html(
     <Layout
       currentTrack={currentTrack}
-      startPoll={currentTrack !== null}
+      polling={player.timer !== undefined}
       automations={automations}
     />
   );
+});
+
+app.get("/dump-player", (c) => {
+  console.log(player.timer);
+  return c.json(player);
 });
 
 app.get("/spotify-redirect", async (c) => {

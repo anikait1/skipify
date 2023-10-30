@@ -1,17 +1,9 @@
 import { FC } from "hono/jsx";
 import { CurrentlyPlaying } from "./currently-playing";
-import { CurrentlyPlayingData } from "../spotify-api";
 import { AutomationList } from "./automation-list";
-import { Automation } from "../database";
 import { AutomationInput } from "./automation-input";
 
-type LayoutProps = {
-  currentTrack: CurrentlyPlayingData;
-  startPoll: boolean;
-  automations: Automation[] | null
-};
-
-export const Layout: FC<LayoutProps> = (props) => {
+export const Layout: FC = (props) => {
   return (
     <html lang="en">
       <head>
@@ -29,16 +21,14 @@ export const Layout: FC<LayoutProps> = (props) => {
           href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css"
         />
         <script src="https://unpkg.com/htmx.org@1.9.6"></script>
+        <script defer src="public/script.js"></script>
       </head>
       <body>
         <main class="container mt-5">
           <div class="row">
-            <CurrentlyPlaying
-              currentTrack={props.currentTrack}
-              startPoll={props.startPoll}
-            />
-            <AutomationList automations={props.automations}/>
-            <AutomationInput/>
+            <CurrentlyPlaying />
+            <AutomationList />
+            <AutomationInput />
           </div>
         </main>
       </body>

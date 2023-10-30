@@ -6,10 +6,13 @@ import {
 } from "./spotify-api";
 import {
   Automation,
+  AutomationDB,
+  getAllAutomations,
+  insertAutomation,
 } from "./database";
 import { AuthorizedTokens } from "./tokens";
 
-const PLAYER_POLL_INTERVAL = 1000 // 1 second
+const PLAYER_POLL_INTERVAL = 1000; // 1 second
 
 export type InactivePlayer = { state: "STOPPED"; currentlyPlaying: null };
 export type ActivePlayer = {
@@ -18,40 +21,65 @@ export type ActivePlayer = {
 };
 export type Player = (ActivePlayer | InactivePlayer) & {
   automations: Automation[];
+  timer?: Timer;
 };
 
-export function loadPlayer(
-  automations: Automation[]
-): Player {
-  return  {
+export function loadPlayer(automations: Automation[]): Player {
+  return {
     state: "STOPPED",
     currentlyPlaying: null,
     automations: automations,
-  }
+  };
 }
 
-export async function playerPoll(tokens: AuthorizedTokens, player: Player): Promise<void> {
+export async function playerPoll(
+  tokens: AuthorizedTokens,
+  player: Player
+): Promise<void> {
   try {
     const track = await currentlyPlaying(tokens.accessToken);
     if (!track) {
-      setTimeout(playerPoll, PLAYER_POLL_INTERVAL, tokens, player);
-      return
+      player.timer = setTimeout(
+        playerPoll,
+        PLAYER_POLL_INTERVAL,
+        tokens,
+        player
+      );
+      return;
     }
 
     player.state = "PLAYING";
     player.currentlyPlaying = track;
-    
+
     const automation = findAutomation(player.automations, track.item.uri);
     if (automation) {
-     applyAutomation(tokens, automation, track);
+      applyAutomation(tokens, automation, track);
     }
-
   } catch (error) {
     // TODO - brainstorm what needs to be done to the player state
-    console.error("Unable to fetch currently playing track", error);
+    console.error(
+      "Unable to fetch currently playing track",
+      (error as Error).message
+    );
   }
 
-  setTimeout(playerPoll, PLAYER_POLL_INTERVAL, tokens, player);
+  player.timer = setTimeout(playerPoll, PLAYER_POLL_INTERVAL, tokens, player);
+}
+
+export function stopPlayerPoll(player: Player): void {
+  if (!player.timer) {
+    console.error("Polling is not setup as of now");
+    return;
+  }
+
+  console.log(player.timer);
+  clearTimeout(player.timer);
+  player.timer = undefined;
+}
+
+export function addAutomation(player: Player, automation: AutomationDB): void {
+  insertAutomation(automation);
+  player.automations = getAllAutomations();
 }
 
 function findAutomation(
@@ -88,7 +116,7 @@ async function applyAutomation(
       break;
     case "RANGE:BETWEEN":
       if (progress < automation.action.range.start) {
-        await seek(automation.action.range.start,tokens.accessToken).catch(
+        await seek(automation.action.range.start, tokens.accessToken).catch(
           (error) => {
             console.error(
               `Unable to perform seek operation on ${currentlyPlaying} due to ${error}`
