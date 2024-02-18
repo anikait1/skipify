@@ -51,6 +51,8 @@ export async function playerPoll(
     player.state = "PLAYING";
     player.currentlyPlaying = track;
 
+    console.log(track.item.album.images)
+
     const automation = findAutomation(player.automations, track.item.uri);
     if (automation) {
       applyAutomation(tokens, automation, track);

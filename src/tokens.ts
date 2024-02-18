@@ -18,9 +18,6 @@ export type UnAuthorizedTokens = {
 };
 export type Tokens = AuthorizedTokens | UnAuthorizedTokens;
 
-// export function loadTokens(spotifyTokens: null): UnAuthorizedTokens;
-// export function loadTokens(spotifyTokens: SpotifyTokens): AuthorizedTokens
-
 export function loadTokens(spotifyTokens: SpotifyTokens | null): Tokens {
   if (!spotifyTokens) {
     return {

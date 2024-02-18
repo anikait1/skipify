@@ -31,6 +31,22 @@ export const Layout: FC = (props) => {
             <AutomationInput />
           </div>
         </main>
+        <section class="bg-danger-subtle fixed-bottom">
+          <div class="container-fluid d-flex justify-content-between">
+            <div id="track-details" class="d-flex align-items-center">
+              <img src="https://i.scdn.co/image/ab67616d00004851a7fea62d802290850db366c5" alt="" class="img-fluid shadow-sm border rounded"/>
+              <div class="ms-2">
+              <p class="my-0">0.99 Paisa</p>
+              <p class="text-black-50 my-0">Attending Donkey</p>
+              </div>
+            </div>
+            <div id="track-actions">
+            <i class="bi bi-play-fill"></i>
+              <div>Pause</div>
+              <div>Progress</div>
+            </div>
+          </div>
+        </section>
       </body>
     </html>
   );
