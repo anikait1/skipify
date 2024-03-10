@@ -1,73 +1,52 @@
-// spotify API calls
-// - Auth
-// - Player
-
-const ERRORS = {
-  DEFAULT_NETWORK_ERROR: "[spotify api] network error occured",
-  NOT_OK_RESPONSE_ERROR: "[spotify api] non ok response",
-};
-
-const SpotifyErrorType = {
-  NETWORK_ERROR: "NETWORK_ERROR",
-  REQUEST_ERROR: "REQUEST_ERROR",
-  RESPONSE_ERROR: "RESPONSE_ERROR",
-} as const;
-
-type SpotifyErrorType =
-  (typeof SpotifyErrorType)[keyof typeof SpotifyErrorType];
-
-export class SpotifyError<T = Record<string, unknown>> extends Error {
-  type: SpotifyErrorType;
-  extra?: T;
-  cause?: unknown;
-
-  private constructor(
-    type: SpotifyErrorType,
-    message: string,
-    cause: unknown,
-    extra?: T
-  ) {
-    super(message);
-    this.cause = cause;
-    this.type = type;
-    this.name = `SpotifyError-${type}`;
-    this.extra = extra;
-  }
-
-  static networkError(request: Request, error?: unknown, message?: string) {
-    return new SpotifyError<{request: Request}>(
-      SpotifyErrorType.NETWORK_ERROR,
-      message ?? ERRORS.DEFAULT_NETWORK_ERROR,
-      error,
-      { request }
-    );
-  }
-
-  static requestError(request: Request, response: Response) {
-    return new SpotifyError<{request: Request, response: Response}>(
-      SpotifyErrorType.REQUEST_ERROR,
-      ERRORS.NOT_OK_RESPONSE_ERROR,
-      null,
-      { request, response }
-    );
-  }
-}
-
 /**
- * @throws {SpotifyError}
+ * Initialize the database
+ * Read credentials
+ * In case
  */
-function apiRequest(request: Request, signal: AbortSignal) {
-  return fetch(request, { signal })
-    .then((response) => {
-      if (!response.ok) {
-        throw SpotifyError.requestError(request, response);
-      }
 
-      return response
-    })
-    .catch((networkError) => {
-      throw SpotifyError.networkError(request, networkError);
-    });
+import Database from "bun:sqlite";
+import {
+  SpotifyAPICredentials,
+  getCredentialsByName,
+} from "./database/credentials";
+import { setupDB } from "./database/setup";
+import { logger } from "./lib/logger";
+import {
+  SpotifyAPITokens,
+  getTokensByUser,
+  updateAccessTokenForUser,
+} from "./database/tokens";
+import * as SpotifyAPI from "./services/spotify/api";
+import { EventEmitter } from "stream";
+import { Poller } from "./services/poll";
+
+// TODO - fix the file path for `CREATE_TABLE_STATEMENT_PATH`
+const DB_FILENAME = "skipify.sqlite";
+const CREATE_TABLE_STATEMENT_PATH = `${import.meta.dir}/tables.sql`;
+const USER = "anikait";
+
+let db: Database;
+try {
+  db = await setupDB(DB_FILENAME, CREATE_TABLE_STATEMENT_PATH);
+} catch (error) {
+  logger.error(
+    { error, dbFilename: DB_FILENAME, sqlFile: CREATE_TABLE_STATEMENT_PATH },
+    "unable to setup the database"
+  );
+  process.exit(1);
+}
+const target = new EventTarget()
+const abortController = new AbortController()
+
+const stage = SpotifyAPI.apiIntegrationStage(USER, db)
+if (stage === "COMPLETE") {
+  const poller = new Poller(target)
+
+  poller.tokenPoll("", "")
+  poller.currentlyPlayingPoll("", abortController.signal)
+
 }
 
-// spotify api actionss
+
+
+

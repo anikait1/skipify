@@ -33,7 +33,7 @@ export function loadPlayer(automations: Automation[]): Player {
 }
 
 export async function playerPoll(
-  tokens: AuthorizedTokens,
+  tokens: AuthorizedTokens, 
   player: Player
 ): Promise<void> {
   try {

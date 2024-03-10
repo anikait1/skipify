@@ -174,3 +174,4 @@ config/tokens.json
 
 # sqlite
 *.db
+*.sqlite

@@ -17,6 +17,7 @@
     "hono": "^3.6.3",
     "oxide.ts": "^1.1.0",
     "pino": "^8.17.2",
+    "reflect-metadata": "^0.2.1",
     "typia": "^5.4.9",
     "valibot": "^0.13.1",
     "yargs": "^17.7.2"

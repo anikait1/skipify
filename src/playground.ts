@@ -1,12 +1,38 @@
-import typia from "typia";
+function poller(poll) {
+  let timerID;
 
-type Animal = {
-    name: string;
-    age: number;
+  function run() {
+    console.log('run')
+    poll();
+    timerID = setTimeout(run, 1000);
+    console.log('run', timerID)
+  }
+
+  run();
+
+  return {
+    poll,
+    clear: () => {
+      clearTimeout(timerID);
+    },
+    timerID,
+  };
 }
 
-const animal = {name: 'Anikait', age: 42}
-const notAnimal = {age: 43}
+function foo() {
+  console.log("foo");
+}
 
-console.log(typia.validate<Animal>(animal))
-console.log(typia.validate<Animal>(notAnimal))
+const p = poller(foo);
+let count = 5;
+
+const interval = setInterval(() => {
+  if (count <= 0) {
+    clearInterval(interval);
+    p.clear();
+    return;
+  }
+
+  console.log(p.timerID);
+  count -= 1;
+}, 2000);
