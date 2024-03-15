@@ -1,52 +1,66 @@
-/**
- * Initialize the database
- * Read credentials
- * In case
- */
-
-import Database from "bun:sqlite";
-import {
-  SpotifyAPICredentials,
-  getCredentialsByName,
-} from "./database/credentials";
-import { setupDB } from "./database/setup";
 import { logger } from "./lib/logger";
-import {
-  SpotifyAPITokens,
-  getTokensByUser,
-  updateAccessTokenForUser,
-} from "./database/tokens";
-import * as SpotifyAPI from "./services/spotify/api";
-import { EventEmitter } from "stream";
-import { Poller } from "./services/poll";
+import { setupDB } from "./database/setup";
+import { setupConfig } from "./services/config";
+import Poller, { EventTypes } from "./services/poll";
+import { Player } from "./services/player";
+import { getActiveTokens, updateAccessToken } from "./database/queries";
+import { SpotifyCurrentlyPlaying } from "./services/spotify/schema";
 
-// TODO - fix the file path for `CREATE_TABLE_STATEMENT_PATH`
+// TODO - filenames
 const DB_FILENAME = "skipify.sqlite";
-const CREATE_TABLE_STATEMENT_PATH = `${import.meta.dir}/tables.sql`;
-const USER = "anikait";
+const CONFIG_FILENAME =
+    "";
+const CREATE_TABLE_STATEMENT_PATH =
+    "";
 
-let db: Database;
-try {
-  db = await setupDB(DB_FILENAME, CREATE_TABLE_STATEMENT_PATH);
-} catch (error) {
-  logger.error(
-    { error, dbFilename: DB_FILENAME, sqlFile: CREATE_TABLE_STATEMENT_PATH },
-    "unable to setup the database"
-  );
-  process.exit(1);
+const wrappedDB = await setupDB(DB_FILENAME, CREATE_TABLE_STATEMENT_PATH);
+if (wrappedDB.isErr()) {
+    const error = wrappedDB.unwrapErr();
+
+    logger.error(
+        {
+            error,
+            filename: DB_FILENAME,
+            sqlTablesFile: CREATE_TABLE_STATEMENT_PATH,
+        },
+        "unable to setup the database"
+    );
+    process.exit(1);
 }
-const target = new EventTarget()
-const abortController = new AbortController()
+const db = wrappedDB.unwrap();
 
-const stage = SpotifyAPI.apiIntegrationStage(USER, db)
-if (stage === "COMPLETE") {
-  const poller = new Poller(target)
+const wrappedConfig = await setupConfig(CONFIG_FILENAME);
+if (wrappedConfig.isErr()) {
+    const error = wrappedConfig.unwrapErr();
 
-  poller.tokenPoll("", "")
-  poller.currentlyPlayingPoll("", abortController.signal)
-
+    logger.error({ error }, "unable to load config");
+    process.exit(1);
 }
+const config = wrappedConfig.unwrap();
+logger.info({ config, db });
+
+const tokens = getActiveTokens(db);
+const player = new Player([], "", new AbortController().signal);
 
 
 
+Poller.addEventListener(EventTypes.ACCESS_TOKEN_FAILED, () => {});
 
+Poller.addEventListener(EventTypes.ACCESS_TOKEN_SUCCESS, (event: Event) => {
+    const customEvent = event as CustomEvent<{ accessToken: string }>;
+
+    player.accessToken = customEvent.detail.accessToken;
+    updateAccessToken(db, customEvent.detail.accessToken);
+});
+
+Poller.addEventListener(EventTypes.CURRENTLY_PLAYING, (event: Event) => {
+    const customEvent = event as CustomEvent<{
+        currentlyPlaying: SpotifyCurrentlyPlaying;
+    }>;
+
+    player.currentlyPlaying = customEvent.detail.currentlyPlaying;
+    player.applyAutomation()
+});
+Poller.addEventListener(EventTypes.CURRENTLY_PLAYING_POLL_STOPPED, () => {});
+
+export { db, config };

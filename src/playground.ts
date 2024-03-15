@@ -1,38 +1,15 @@
-function poller(poll) {
-  let timerID;
+// import Poller, {EventTypes} from "./services/poll"
 
-  function run() {
-    console.log('run')
-    poll();
-    timerID = setTimeout(run, 1000);
-    console.log('run', timerID)
-  }
+// console.log(Poller.currentlyPlayingEmptyCount);
+// Poller.currentlyPlayingEmptyCount += 1;
+// console.log(Poller.currentlyPlayingEmptyCount);
 
-  run();
 
-  return {
-    poll,
-    clear: () => {
-      clearTimeout(timerID);
-    },
-    timerID,
-  };
-}
+// type Obj = {name: string}
+// Poller.addEventListener('da', (data: Event<EventTarget>) => {
+// })
 
-function foo() {
-  console.log("foo");
-}
-
-const p = poller(foo);
-let count = 5;
-
-const interval = setInterval(() => {
-  if (count <= 0) {
-    clearInterval(interval);
-    p.clear();
-    return;
-  }
-
-  console.log(p.timerID);
-  count -= 1;
-}, 2000);
+// Poller.addEventListener("name", (event: CustomEvent) => {
+//   const { detail } = event;
+//   // do magic
+// });
