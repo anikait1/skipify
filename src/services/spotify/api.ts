@@ -1,312 +1,307 @@
-import { Err, Ok, Result } from "oxide.ts/core";
-import { URLS } from "./url";
 import {
-    SpotifyAPIError,
-    SpotifyAPIErrorSet,
-    SpotifyAPIErrorTypes,
+  SpotifyAPIError,
+  SpotifyAPIErrorTypes,
+  SpotifyAuthPreCondition,
+  SpotifyAuthPreConditionTypes,
 } from "./error";
 import { parse } from "valibot";
 import {
-    SpotifyAccessToken,
-    SpotifyAccessTokenSchema,
-    SpotifyCurrentlyPlaying,
-    SpotifyCurrentlyPlayingSchema,
-    SpotifyToken,
-    SpotifyTokenSchema,
+  SpotifyAccessTokenSchema,
+  SpotifyCurrentlyPlaying,
+  SpotifyCurrentlyPlayingSchema,
+  SpotifyTokenSchema,
 } from "./schema";
+import { fileLogger } from "../../lib/logger";
 
-type QueryParams = [string, string];
+type AuthTokens = {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+};
 
-async function apiRequest(
-    request: Request
-): Promise<
-    Result<
-        Response,
-        Exclude<SpotifyAPIErrorSet, SpotifyAPIError<"ResponseError">>
-    >
-> {
+export class SpotifyAuth {
+  constructor(
+    private clientID: string,
+    private clientSecret: string,
+    private redirectURI: string,
+    private postTokenAction: (
+      accessToken: string,
+      expiry: number,
+      refreshToken?: string
+    ) => void,
+    private tokens: AuthTokens | null = null
+  ) {}
+  static authorizationURL = "https://accounts.spotify.com/authorize";
+  static accessTokenURL = "https://accounts.spotify.com/api/token";
+  static accessTokenExpiryInterval = 3_000_000; // 3000s in milliseconds
+  static scopes = [
+    "user-read-playback-state",
+    "user-read-playback-state",
+    "user-read-currently-playing",
+  ];
+
+  createAuthorizationURL(scopes: string[], state: string): string {
+    const params = new URLSearchParams();
+    params.append("response_type", "code");
+    params.append("client_id", this.clientID);
+    params.append("scope", scopes.join(" "));
+    params.append("redirect_uri", this.redirectURI);
+    params.append("state", state);
+
+    return `${SpotifyAuth.authorizationURL}?${params.toString()}`;
+  }
+
+  /**
+   * Get the token set from spotify after the initial authorization
+   * @param authorizationCode the code given by spotify after  successful authorization
+   * @throws {SpotifyAPIError}
+   */
+  async exchangeCodeForToken(authorizationCode: string): Promise<void> {
+    const params = new URLSearchParams();
+    params.append("grant_type", "authorization_code");
+    params.append("code", authorizationCode);
+    params.append("redirect_uri", this.redirectURI);
+
+    const request = new Request(SpotifyAuth.accessTokenURL, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${btoa(`${this.clientID}:${this.clientSecret}`)}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: params,
+    });
+
     let response: Response;
     try {
-        response = await fetch(request);
+      response = await fetch(request);
     } catch (error) {
-        if (request.signal.aborted) {
-            return Err(
-                new SpotifyAPIError(
-                    SpotifyAPIErrorTypes.REQUEST_ABORT_ERROR,
-                    { request },
-                    error
-                )
-            );
-        }
-
-        return Err(
-            new SpotifyAPIError(
-                SpotifyAPIErrorTypes.NETWORK_ERROR,
-                { request },
-                error
-            )
-        );
+      throw new SpotifyAPIError(
+        SpotifyAPIErrorTypes.NETWORK_ERROR,
+        { request },
+        error
+      );
     }
 
     if (!response.ok) {
-        return Err(
-            new SpotifyAPIError(SpotifyAPIErrorTypes.REQUEST_ERROR, {
-                request,
-                response,
-            })
-        );
+      throw new SpotifyAPIError(SpotifyAPIErrorTypes.REQUEST_ERROR, {
+        request,
+        response,
+      });
     }
 
-    return Ok(response);
-}
+    try {
+      const tokens = parse(SpotifyTokenSchema, await response.json());
+      this.storeTokens(
+        tokens.access_token,
+        tokens.expires_in,
+        tokens.refresh_token
+      );
+    } catch (error) {
+      throw new SpotifyAPIError(SpotifyAPIErrorTypes.RESPONSE_ERROR, {
+        request,
+        response,
+        schema: SpotifyTokenSchema,
+      });
+    }
+  }
 
-export function createAuthorizationURL(
-    clientID: string,
-    redirectURI: string,
-    scopes: string[],
-    state: string
-): string {
-    const url = new URL(URLS.AUTH.AUTHORIZATION_URL);
-    const params: QueryParams[] = [
-        ["response_type", "code"],
-        ["client_id", clientID],
-        ["scope", scopes.join(" ")],
-        ["redirect_uri", redirectURI],
-        ["state", state],
-    ];
-
-    for (const [name, value] of params) {
-        url.searchParams.append(name, value);
+  /**
+   * @throws {SpotifyAuthPreCondition | SpotifyAPIError}
+   */
+  async refreshAccessToken(): Promise<void> {
+    if (!this.tokens) {
+      throw new SpotifyAuthPreCondition(
+        SpotifyAuthPreConditionTypes.TOKENS_UNDEFINED
+      );
     }
 
-    return url.toString();
-}
+    const params = new URLSearchParams();
+    params.append("grant_type", "refresh_token");
+    params.append("refresh_token", this.tokens.refreshToken);
+    params.append("client_id", this.clientID);
 
-/**
- * Fetch the initial set of tokens from spotify.
- * The initial set contains both the refresh and acess token.
- * Authorization code is given by spotify once the user has
- * successfully logged in using the authorized url.
- * Ref: https://developer.spotify.com/documentation/web-api/tutorials/code-flow
- * @param clientID
- * @param clientSecret
- * @param redirectURI
- * @param authorizationCode
- * @returns
- */
-export async function requestToken(
-    clientID: string,
-    clientSecret: string,
-    redirectURI: string,
-    authorizationCode: string
-): Promise<Result<SpotifyToken, SpotifyAPIErrorSet>> {
-    const url = new URL(URLS.AUTH.ACCESS_TOKEN);
-    const params: QueryParams[] = [
-        ["grant_type", "authorization_code"],
-        ["code", authorizationCode],
-        ["redirect_uri", redirectURI],
-    ];
-    const headers = {
-        Authorization: `Basic ${btoa(`${clientID}:${clientSecret}`)}`,
+    const request = new Request(SpotifyAuth.accessTokenURL, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${btoa(`${this.clientID}:${this.clientSecret}`)}`,
         "Content-Type": "application/x-www-form-urlencoded",
-    };
-
-    for (const [name, value] of params) {
-        url.searchParams.append(name, value);
-    }
-
-    const request = new Request(url.toString(), {
-        method: "POST",
-        headers,
+      },
+      body: params,
     });
 
-    const wrappedResponse = await apiRequest(request);
-    if (wrappedResponse.isErr()) {
-        return wrappedResponse;
-    }
-
-    const response = wrappedResponse.unwrap();
+    let response: Response;
     try {
-        const tokens = parse(SpotifyTokenSchema, await response.json());
-        return Ok(tokens);
+      response = await fetch(request);
     } catch (error) {
-        return Err(
-            new SpotifyAPIError(
-                SpotifyAPIErrorTypes.RESPONSE_ERROR,
-                {
-                    request,
-                    response,
-                    schema: SpotifyAccessTokenSchema,
-                },
-                error
-            )
-        );
-    }
-}
-
-/**
- * Fetch a new access token using the refresh token.
- * Refresh token is obtained using the `requestToken` function
- * Ref: https://developer.spotify.com/documentation/web-api/tutorials/refreshing-tokens
- * @param clientID
- * @param refreshToken
- * @returns
- */
-export async function refreshAccessToken(
-    clientID: string,
-    clientSecret: string,
-    refreshToken: string
-): Promise<Result<SpotifyAccessToken, SpotifyAPIErrorSet>> {
-    const url = new URL(URLS.AUTH.ACCESS_TOKEN);
-    // const params: QueryParams[] = [
-    //   ["grant_type", "refresh_token"],
-    //   ["refresh_token", refreshToken],
-    //   ["client_id", clientID],
-    // ];
-    const headers = {
-        Authorization: `Basic ${btoa(`${clientID}:${clientSecret}`)}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-    };
-
-    // for (const [name, value] of params) {
-    //   url.searchParams.append(name, value);
-    // }
-
-    console.log(
-        new URLSearchParams([
-            ["grant_type", "refresh_token"],
-            ["refresh_token", refreshToken],
-            ["client_id", clientID],
-        ])
-    );
-    const request = new Request(url.toString(), {
-        method: "POST",
-        headers,
-        body: new URLSearchParams([
-            ["grant_type", "refresh_token"],
-            ["refresh_token", refreshToken],
-            ["client_id", clientID],
-        ]),
-    });
-
-    const wrappedResponse = await apiRequest(request);
-    if (wrappedResponse.isErr()) {
-        return wrappedResponse;
+      throw new SpotifyAPIError(
+        SpotifyAPIErrorTypes.NETWORK_ERROR,
+        { request },
+        error
+      );
     }
 
-    const response = wrappedResponse.unwrap();
+    if (!response.ok) {
+      throw new SpotifyAPIError(SpotifyAPIErrorTypes.REQUEST_ERROR, {
+        request,
+        response,
+      });
+    }
+
     try {
-        const tokens = parse(SpotifyAccessTokenSchema, await response.json());
-        return Ok(tokens);
-    } catch (error) {
-        return Err(
-            new SpotifyAPIError(
-                SpotifyAPIErrorTypes.RESPONSE_ERROR,
-                {
-                    request,
-                    response,
-                    schema: SpotifyAccessTokenSchema,
-                },
-                error
-            )
-        );
-    }
-}
+      const tokens = parse(SpotifyAccessTokenSchema, await response.json());
 
-/**
- * Get the currently playing song, in case no song
- * is being played the API would return 204, hence the
- * null return for it.
- * @param accessToken
- * @param signal
- * @returns
- */
-export async function currentlyPlaying(
-    accessToken: string,
-    signal: AbortSignal
-): Promise<Result<SpotifyCurrentlyPlaying | null, SpotifyAPIErrorSet>> {
-    const request = new Request(URLS.API.CURRENTLY_PLAYING, {
-        method: "GET",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
+      this.storeTokens(tokens.access_token, tokens.expires_in);
+    } catch (error) {
+      throw new SpotifyAPIError(
+        SpotifyAPIErrorTypes.RESPONSE_ERROR,
+        {
+          request,
+          response,
+          schema: SpotifyAccessTokenSchema,
         },
-        signal,
-    });
+        error
+      );
+    }
+  }
 
-    const wrappedResponse = await apiRequest(request);
-    if (wrappedResponse.isErr()) {
-        return wrappedResponse;
+  /**
+   * @throws {SpotifyAuthPreCondition}
+   */
+  get accessToken(): string {
+    if (!this.tokens) {
+      throw new SpotifyAuthPreCondition(
+        SpotifyAuthPreConditionTypes.TOKENS_UNDEFINED
+      );
     }
 
-    const response = wrappedResponse.unwrap();
+    const refreshToken =
+      this.tokens.expiresAt - Date.now() <
+      SpotifyAuth.accessTokenExpiryInterval;
+
+    if (refreshToken) {
+      this.refreshAccessToken().catch((error) => {
+        fileLogger.error({ error }, "unable to refersh access token");
+      });
+    }
+
+    return this.tokens.accessToken;
+  }
+
+  /**
+   *
+   * @param accessToken
+   * @param expiry
+   * @param refreshToken
+   * @throws {SpotifyAuthPreCondition}
+   */
+  private storeTokens(
+    accessToken: string,
+    expiry: number,
+    refreshToken?: string
+  ): void {
+    // expiry is sent in seconds, need to adjust it to milliseconds
+    const expiresAt = Date.now() + expiry * 1000;
+    if (!this.tokens) {
+      if (!refreshToken) {
+        throw new SpotifyAuthPreCondition(
+          SpotifyAuthPreConditionTypes.SAVE_WITHOUT_REFRESH_TOKEN
+        );
+      }
+
+      this.tokens = {
+        accessToken,
+        refreshToken: refreshToken,
+        expiresAt: expiresAt,
+      };
+    } else {
+      this.tokens.accessToken = accessToken;
+      this.tokens.expiresAt = expiresAt;
+      if (refreshToken) {
+        this.tokens.refreshToken = refreshToken;
+      }
+    }
+
+    this.postTokenAction(accessToken, expiresAt, refreshToken);
+  }
+}
+
+export class SpotifyAPI {
+  constructor(
+    private baseUrl: string,
+    private auth: SpotifyAuth,
+    private signal: AbortSignal
+  ) {}
+
+  private async apiRequest(request: Request): Promise<Response> {
+    const accessToken = this.auth.accessToken;
+    request.headers.append("Content-Type", "application/json");
+    request.headers.append("Authorization", `Bearer ${accessToken}`);
+
+    let response: Response;
+    try {
+      response = await fetch(request, { signal: this.signal });
+    } catch (error) {
+      if (request.signal.aborted) {
+        throw new SpotifyAPIError(
+          SpotifyAPIErrorTypes.REQUEST_ABORT_ERROR,
+          { request },
+          error
+        );
+      }
+
+      throw new SpotifyAPIError(
+        SpotifyAPIErrorTypes.NETWORK_ERROR,
+        { request },
+        error
+      );
+    }
+
+    if (!response.ok) {
+      throw new SpotifyAPIError(SpotifyAPIErrorTypes.REQUEST_ERROR, {
+        request,
+        response,
+      });
+    }
+
+    return response;
+  }
+
+  async currentlyPlaying(): Promise<SpotifyCurrentlyPlaying | null> {
+    const request = new Request(`${this.baseUrl}/me/player/currently-playing`);
+    const response = await this.apiRequest(request);
+
     if (response.status === 204) {
-        return Ok(null);
+      return null;
     }
 
     try {
-        const currentlyPlaying = parse(
-            SpotifyCurrentlyPlayingSchema,
-            await response.json()
-        );
-        return Ok(currentlyPlaying);
+      return parse(SpotifyCurrentlyPlayingSchema, await response.json());
     } catch (error) {
-        return Err(
-            new SpotifyAPIError(SpotifyAPIErrorTypes.RESPONSE_ERROR, {
-                request,
-                response,
-                schema: SpotifyCurrentlyPlayingSchema,
-            })
-        );
+      throw new SpotifyAPIError(SpotifyAPIErrorTypes.RESPONSE_ERROR, {
+        request,
+        response,
+        schema: SpotifyCurrentlyPlayingSchema,
+      });
     }
-}
+  }
 
-export async function seek(
-    position: number,
-    accessToken: string,
-    signal: AbortSignal
-): Promise<
-    Result<null, Exclude<SpotifyAPIErrorSet, SpotifyAPIError<"ResponseError">>>
-> {
-    const url = new URL(URLS.API.SEEK);
+  async seek(position: number) {
+    const url = new URL(`${this.baseUrl}/me/player/seek`);
     url.searchParams.append("position_ms", `${position}`);
-
     const request = new Request(url.toString(), {
-        method: "PUT",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-        },
-        signal,
+      method: "PUT",
     });
 
-    const wrappedResponse = await apiRequest(request);
-    if (wrappedResponse.isErr()) {
-        return wrappedResponse;
-    }
+    await this.apiRequest(request);
+    return null;
+  }
 
-    return Ok(null);
-}
-
-export async function next(
-    accessToken: string,
-    signal: AbortSignal
-): Promise<
-    Result<null, Exclude<SpotifyAPIErrorSet, SpotifyAPIError<"ResponseError">>>
-> {
-    const request = new Request(URLS.API.NEXT, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-        },
-        signal,
+  async next() {
+    const request = new Request(`${this.baseUrl}/me/player/next`, {
+      method: "POST",
     });
+    await this.apiRequest(request);
 
-    const wrappedResponse = await apiRequest(request);
-    if (wrappedResponse.isErr()) {
-        return wrappedResponse;
-    }
-
-    return Ok(null);
+    return null;
+  }
 }

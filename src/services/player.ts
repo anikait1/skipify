@@ -1,76 +1,83 @@
-import * as SpotifyAPI from "./spotify/api";
 import { SongAutomation } from "../database/schema";
+import { fileLogger } from "../lib/logger";
+import { SpotifyAPI } from "./spotify/api";
+import { SpotifyAPIError } from "./spotify/error";
 import { SpotifyCurrentlyPlaying } from "./spotify/schema";
-import { logger } from "../lib/logger";
-import poll, { EventTypes } from "./poll";
 
 export class Player {
-    currentlyPlaying: SpotifyCurrentlyPlaying | null;
-    automations: Map<
-        string,
-        Pick<SongAutomation, "automation_id" | "spotify_song_id" | "range">[]
-    >;
-    accessToken: string;
-    signal: AbortSignal;
-
     constructor(
-        automations: Pick<
-            SongAutomation,
-            "automation_id" | "spotify_song_id" | "range"
-        >[],
-        accessToken: string,
-        signal: AbortSignal
-    ) {
-        // TODO - transform the automations to map
-        this.currentlyPlaying = null;
-        this.automations = new Map();
+        public spotify: SpotifyAPI,
+        public automations: SongAutomation[],
+        public timer: Timer | undefined = undefined,
+        public currentTrack: SpotifyCurrentlyPlaying | null = null
+    ) {}
 
-        this.accessToken = accessToken;
-        this.signal = signal;
-    }
+    static POLL_TIMER = 1000; // 1 second
 
-    updateCurrentlyPlaying(currentlyPlaying: SpotifyCurrentlyPlaying) {
-        this.currentlyPlaying = currentlyPlaying;
-        this.applyAutomation().catch((error) =>
-            logger.error(
-                { error },
-                "unexpected error occured while running automation"
-            )
-        );
-    }
-
-    async applyAutomation() {
-        if (this.currentlyPlaying === null) {
-            return;
+    async poll() {
+        try {
+            this.currentTrack = await this.spotify.currentlyPlaying();
+        } catch (error) {
+            fileLogger.error({ error }, "error occured in currently playing");
         }
 
-        const automations = this.automations.get(this.currentlyPlaying.item.id);
-        if (!automations) {
-            return;
+        fileLogger.debug(this.currentTrack, "currently playing")
+        if (!this.currentTrack) {
+            return this.schedulePoll();
         }
 
-        for (const automation of automations) {
-            if (
-                automation.range.start !== null &&
-                this.currentlyPlaying.progress_ms < automation.range.start
-            ) {
-                return await SpotifyAPI.seek(
-                    automation.range.start,
-                    this.accessToken,
-                    this.signal
-                );
-            } else if (
-                automation.range.end !== null &&
-                this.currentlyPlaying.progress_ms > automation.range.end
-            ) {
-                return await SpotifyAPI.next(this.accessToken, this.signal);
+        try {
+            await this.applyAutomation();
+        } catch (error) {
+            // TODO - add logic to stop the polling after a certain interval
+            if (error instanceof SpotifyAPIError) {
+                console.log(error.context.response)
+                fileLogger.error({ error: JSON.stringify(error) }, "error occured while applying automation");
+            } else {
+                fileLogger.error({ error, }, "unknown error occured while applying automation");
             }
+        }
+
+        return this.schedulePoll();
+    }
+
+    private schedulePoll() {
+        this.timer = setTimeout(() => {
+            this.poll();
+        }, Player.POLL_TIMER);
+    }
+
+    async applyAutomation(): Promise<void> {
+        if (!this.currentTrack) {
+            return;
+        }
+
+        const automation = this.automations.find(
+            (a) => a.spotify_song_id === this.currentTrack!.item.id
+        );
+
+        if (!automation) {
+            return;
+        }
+
+        // TODO - separate out the conditions in separate variables
+        if (
+            automation.range.start &&
+            this.currentTrack!.progress_ms < automation.range.start
+        ) {
+            await this.spotify.seek(automation.range.start);
+        } else if (
+            automation.range.end &&
+            this.currentTrack!.progress_ms > automation.range.end
+        ) {
+            await this.spotify.next();
         }
 
         return;
     }
-}
 
-poll.addEventListener(EventTypes.CURRENTLY_PLAYING, function (event: Event) {
-    
-})
+    stopPoll() {
+        clearTimeout(this.timer);
+        this.timer = undefined;
+    }
+}
