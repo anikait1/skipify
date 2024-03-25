@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "start:dev": "bun src/index.ts",
-    "start:server:dev": "bun run --hot src/server.ts"
+    "start:server:dev": "bun run --hot src/server.tsx"
   },
   "devDependencies": {
     "bun-types": "latest"
@@ -13,13 +13,8 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@types/yargs": "^17.0.32",
     "hono": "^3.6.3",
-    "oxide.ts": "^1.1.0",
     "pino": "^8.17.2",
-    "reflect-metadata": "^0.2.1",
-    "typia": "^5.4.9",
-    "valibot": "^0.13.1",
-    "yargs": "^17.7.2"
+    "valibot": "^0.13.1"
   }
 }
