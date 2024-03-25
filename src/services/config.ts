@@ -1,5 +1,4 @@
-import { Err, Ok, Result } from "oxide.ts/core";
-import { Output, object, string, parse } from "valibot";
+import { object, string, parse } from "valibot";
 
 export const ConfigErrorTypes = {
   FILE_NOT_FOUND_ERROR: "FileNotFoundError",
@@ -34,48 +33,49 @@ const ConfigSchema = object({
   redirectURI: string(),
 });
 
-export type Config = Output<typeof ConfigSchema>;
+export class Config {
+  constructor(
+    public clientID: string,
+    public clientSecret: string,
+    public redirectURI: string
+  ) {}
 
-let setupComplete = false;
+  static async initialize(filename: string): Promise<Config> {
+    const file = Bun.file(filename);
+    if (!(await file.exists())) {
+      throw new ConfigError(ConfigErrorTypes.FILE_NOT_FOUND_ERROR, {
+        filename,
+      });
+    }
 
-export async function setupConfig(
-  filename: string
-): Promise<Result<Config, ConfigError>> {
-  if (setupComplete === true) {
-    return Err(new ConfigError(ConfigErrorTypes.SETUP_ALREADY_COMPLETE));
-  }
-
-  const file = Bun.file(filename);
-  if (!(await file.exists())) {
-    return Err(
-      new ConfigError(ConfigErrorTypes.FILE_NOT_FOUND_ERROR, { filename })
-    );
-  }
-
-  let fileContentJSON;
-  try {
-    fileContentJSON = await file.json();
-  } catch (error) {
-    return Err(
-      new ConfigError(
+    let fileContentJSON;
+    try {
+      fileContentJSON = await file.json();
+    } catch (error) {
+      throw new ConfigError(
         ConfigErrorTypes.FILE_PARSE_ERROR,
         { filename, fileContent: await file.text() },
         error
-      )
-    );
-  }
+      );
+    }
 
-  try {
-    const config = Ok(parse(ConfigSchema, fileContentJSON));
-    setupComplete = true;
-    return config;
-  } catch (error) {
-    return Err(
-      new ConfigError(ConfigErrorTypes.FILE_CONTENT_ERROR, {
-        schema: ConfigSchema,
-        fileContent: fileContentJSON,
-        filename,
-      })
-    );
+    try {
+      const config = parse(ConfigSchema, fileContentJSON);
+      return new Config(
+        config.clientID,
+        config.clientSecret,
+        config.redirectURI
+      );
+    } catch (error) {
+      throw new ConfigError(
+        ConfigErrorTypes.FILE_CONTENT_ERROR,
+        {
+          schema: ConfigSchema,
+          fileContent: fileContentJSON,
+          filename,
+        },
+        error
+      );
+    }
   }
 }
