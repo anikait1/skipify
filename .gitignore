@@ -169,9 +169,11 @@ dist
 .pnp.\*
 
 # config
-config/credentials.json
-config/tokens.json
+credentials.json
 
 # sqlite
 *.db
 *.sqlite
+
+# log
+*.log
